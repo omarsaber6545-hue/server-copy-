@@ -1,0 +1,88 @@
+name: Build & Release Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install NPM Dependencies
+        run: npm install
+
+      - name: Build Web Application (Vite + React)
+        run: npm run build
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Sync Capacitor Android
+        run: npx cap sync android
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./android/gradlew
+
+      - name: Build Debug APK
+        run: |
+          cd android
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Find & Rename Debug APK
+        run: |
+          mkdir -p build-output
+          cp android/app/build/outputs/apk/debug/app-debug.apk build-output/DiscordServerCloner-debug.apk || cp $(find android/app/build/outputs/apk -name "*.apk" | head -n 1) build-output/DiscordServerCloner.apk
+          ls -la build-output/
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiscordServerCloner-APK
+          path: build-output/*.apk
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Discord Server Cloner APK v1.0.${{ github.run_number }}
+          body: |
+            ## 🚀 Discord Server Cloner v1.0
+            
+            ### ✨ الميزات | Features:
+            - **نسخ السيرفرات بالكامل**: إعدادات السيرفر، الرتب (Roles)، الفئات (Categories)، القنوات (Channels)، الإيموجي (Emojis)، والاستيكرات (Stickers).
+            - **تصدير واستيراد النسخ الاحتياطية**: حفظ واستعادة ملفات `JSON Backup`.
+            - **معالجة الـ Rate-Limits تلقائياً**: حماية متكاملة لتفادي حظر الديسكورد ومتابعة فورية للتقدم.
+            - **واجهة عصرية باللغتين العربية والإنجليزية**.
+            
+            ### 📱 تحميل التطبيق | Download APK:
+            قم بتحميل ملف `DiscordServerCloner.apk` المرفق أدناه وتثبيته مباشرة على هاتفك الأندرويد.
+          files: build-output/*.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
